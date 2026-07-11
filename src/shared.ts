@@ -286,6 +286,40 @@ export function hasCliCredentials(): boolean {
 export const SYSTEM_IDENTITY =
   "You are Claude Code, Anthropic's official CLI for Claude."
 
+/**
+ * Rewrite a host `<env>...</env>` block into the exact shape genuine Claude
+ * Code sends.
+ *
+ * Claude Pro/Max subscription billing inspects the system prompt and, when an
+ * `<env>` block is present, fuzzy-matches it against the real Claude Code
+ * format. A block that diverges — e.g. OpenCode's extra `Workspace root
+ * folder:` line, two-space indentation, or the date placed outside the tag —
+ * is treated as a counterfeit and the request is billed as pay-as-you-go
+ * "extra usage" instead of drawing from the subscription. Header/tool/message
+ * shaping alone does not satisfy the check; the block itself must look
+ * authentic. Normalizing it preserves the agent's environment awareness while
+ * keeping the request on-subscription. Verified against build
+ * `0.0.0-next-15329` on 2026-07-11.
+ */
+export function normalizeClaudeCodeEnv(text: string): string {
+  return text.replace(
+    /(?:[^\n]*(?:useful )?information about the environment you are running in:\n)?<env>\n([\s\S]*?)\n<\/env>((?:\n+Today's date:[^\n]*)?)/,
+    (_match, inner: string, trailingDate: string) => {
+      const lines = String(inner)
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        // Drop harness-specific keys that never appear in genuine Claude Code.
+        .filter((line) => !/^Workspace root folder:/i.test(line))
+      const dateMatch = trailingDate.match(/Today's date:\s*(.+)\s*$/)
+      if (dateMatch && !lines.some((line) => /^Today's date:/i.test(line))) {
+        lines.push(`Today's date: ${dateMatch[1].trim()}`)
+      }
+      return `Here is useful information about the environment you are running in:\n<env>\n${lines.join("\n")}\n</env>`
+    },
+  )
+}
+
 const MAX_RETRY_DELAY_S = 20
 
 export async function fetchWithRetry(
@@ -354,17 +388,31 @@ export async function oauthRequest(
   if (hasBody && isJson) body = new TextDecoder().decode(await source.arrayBuffer())
   else if (hasBody) body = source.body
 
-  // Transform body: replace the first system entry (OpenCode's prompt)
-  // with the Claude Code identity. All other entries (from other
-  // plugins like oh-my-openagent) are kept intact. Anthropic only
-  // checks the first system entry for billing routing.
+  // Transform body for the subscription billing path:
+  //   1. Force the first system entry to the Claude Code identity.
+  //   2. Normalize any `<env>` block in the remaining entries so it matches
+  //      genuine Claude Code — a counterfeit block bills as "extra usage"
+  //      rather than drawing from the subscription (see normalizeClaudeCodeEnv).
+  // All other host/plugin system content is preserved so the agent keeps its
+  // instructions.
   if (typeof body === "string" && url.includes("/v1/messages")) {
     try {
       const parsed = JSON.parse(body)
+      const identity = { type: "text", text: SYSTEM_IDENTITY }
       if (Array.isArray(parsed.system) && parsed.system.length > 0) {
-        parsed.system[0] = { type: "text", text: SYSTEM_IDENTITY }
+        parsed.system = parsed.system.map((entry: unknown, index: number) => {
+          if (index === 0) return identity
+          if (entry && typeof entry === "object" && typeof (entry as { text?: unknown }).text === "string") {
+            const block = entry as { type?: string; text: string }
+            return { ...block, text: normalizeClaudeCodeEnv(block.text) }
+          }
+          return entry
+        })
+      } else if (typeof parsed.system === "string" && parsed.system.length > 0) {
+        // A single string system prompt: prepend the identity and normalize.
+        parsed.system = [identity, { type: "text", text: normalizeClaudeCodeEnv(parsed.system) }]
       } else {
-        parsed.system = [{ type: "text", text: SYSTEM_IDENTITY }]
+        parsed.system = [identity]
       }
       // The V2 host merges provider.body into the request payload, so the
       // catalog sentinel (or any configured key) arrives as an `apiKey`
