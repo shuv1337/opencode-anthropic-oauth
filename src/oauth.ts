@@ -114,22 +114,23 @@ export async function exchangeCodeForTokens(
   })
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    throw new Error(
-      `Token exchange failed: ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`,
-    )
+    throw new Error(`Token exchange failed with HTTP ${res.status}`)
   }
 
   const data = (await res.json()) as {
-    access_token: string
-    refresh_token: string
-    expires_in: number
+    access_token?: string
+    refresh_token?: string
+    expires_in?: number
+  }
+
+  if (!data.access_token || !data.refresh_token || !Number.isFinite(data.expires_in)) {
+    throw new Error("Token exchange returned an invalid credential response")
   }
 
   return {
     access: data.access_token,
     refresh: data.refresh_token,
-    expires: Date.now() + data.expires_in * 1000,
+    expires: Date.now() + data.expires_in! * 1000,
   }
 }
 
@@ -152,21 +153,22 @@ export async function refreshTokens(
   })
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    throw new Error(
-      `Token refresh failed: ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`,
-    )
+    throw new Error(`Token refresh failed with HTTP ${res.status}`)
   }
 
   const data = (await res.json()) as {
-    access_token: string
-    refresh_token: string
-    expires_in: number
+    access_token?: string
+    refresh_token?: string
+    expires_in?: number
+  }
+
+  if (!data.access_token || !Number.isFinite(data.expires_in)) {
+    throw new Error("Token refresh returned an invalid credential response")
   }
 
   return {
     access: data.access_token,
-    refresh: data.refresh_token,
-    expires: Date.now() + data.expires_in * 1000,
+    refresh: data.refresh_token ?? refreshToken,
+    expires: Date.now() + data.expires_in! * 1000,
   }
 }
