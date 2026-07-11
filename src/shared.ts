@@ -366,6 +366,10 @@ export async function oauthRequest(
       } else {
         parsed.system = [{ type: "text", text: SYSTEM_IDENTITY }]
       }
+      // The V2 host merges provider.body into the request payload, so the
+      // catalog sentinel (or any configured key) arrives as an `apiKey`
+      // field the Anthropic API rejects as an extra input.
+      delete parsed.apiKey
       body = JSON.stringify(parsed)
     } catch {
       // leave body as-is

@@ -29,6 +29,18 @@ test("variant: URL string + init with JSON body is decoded and transformed", asy
   assert.equal(calls[0].init.headers.get("authorization"), "Bearer tok")
 })
 
+test("variant: host-merged apiKey field is stripped from the JSON body", async () => {
+  const { impl, calls } = capturer()
+  await oauthRequest("tok", MESSAGES_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ apiKey: SENTINEL_KEY, system: [{ type: "text", text: "original" }] }),
+  }, impl)
+  const body = JSON.parse(calls[0].init.body)
+  assert.equal("apiKey" in body, false)
+  assert.match(body.system[0].text, /Claude Code/)
+})
+
 test("variant: Request without init preserves the Request-only body (never dropped)", async () => {
   const { impl, calls } = capturer()
   const request = new Request(MESSAGES_URL, {
