@@ -6,7 +6,7 @@ OpenCode plugin for Anthropic Claude Pro/Max OAuth login — no Claude Code need
 
 Lets you authenticate with your Claude Pro/Max subscription directly in OpenCode via browser OAuth. No need to install Claude Code or manage credentials files.
 
-## Installation
+## OpenCode V1 installation
 
 ```bash
 npm install -g opencode-anthropic-oauth
@@ -19,6 +19,30 @@ Then add to your `opencode.json`:
   "plugin": ["opencode-anthropic-oauth"]
 }
 ```
+
+The package root remains the V1 plugin factory.
+
+## OpenCode V2 beta installation
+
+V2 must load the explicit `./v2` entrypoint. Pin a package version compatible with your exact V2 build:
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "opencode-anthropic-oauth/v2",
+      "options": {
+        "allowClaudeCliFallback": false,
+        "allowV1AuthFallback": false
+      }
+    }
+  ]
+}
+```
+
+Version `0.5.0` targets `opencode2 v0.0.0-next-15329`, `@opencode-ai/plugin@0.0.0-next-15329`, and `effect@4.0.0-beta.83`. The V2 API is beta; retest loading, OAuth login, refresh, API-key bypass, native Anthropic requests, tools, and reload cleanup after every OpenCode upgrade.
+
+Fallback to Claude CLI or V1 `auth.json` is disabled by default so an isolated V2 installation cannot silently read shared credentials. Enable either option only when that sharing is intentional. A configured V2 or environment API key always disables OAuth interception.
 
 ## Usage
 
@@ -36,6 +60,8 @@ Then add to your `opencode.json`:
 - **Auto-refreshes tokens** when they expire — no manual re-auth needed
 - Sets the required API headers on Anthropic requests
 - **Preserves prompt caching** for efficient token usage
+
+V2's native Anthropic route currently has no complete request-auth plugin hook. The V2 entrypoint therefore installs a narrow, reversible fetch compatibility shim for `https://api.anthropic.com` requests carrying this plugin's sentinel or an Anthropic OAuth token. Real API keys, proxy endpoints, and unrelated requests bypass it.
 
 ## Changelog
 
