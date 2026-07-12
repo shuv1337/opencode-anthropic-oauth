@@ -2,6 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic"
 import { Plugin } from "@opencode-ai/plugin/v2"
 import { Effect } from "effect"
 import { createAuthorizationRequest, exchangeCodeForTokens, refreshTokens } from "./oauth.js"
+import { startOAuthProxy, type OAuthProxy } from "./proxy.js"
 import {
   getCliAccessToken,
   getV1AuthAccessToken,
@@ -201,6 +202,20 @@ export default Plugin.define({
     const oauthModeActive = (): Promise<boolean> => isOauthModeActive(resolution())
     const getAccessToken = (): Promise<string | null> => resolveAccessToken(resolution())
 
+    // Recent OpenCode builds dispatch the native Anthropic route through an
+    // Effect HttpClient whose `fetch` reference is frozen before plugins load,
+    // and always send the credential as `x-api-key`. A global fetch patch can
+    // no longer intercept it. Redirect the provider's `baseURL` to a loopback
+    // proxy that rewrites the request into a Claude Pro/Max subscription call.
+    const originalFetch = globalThis.fetch.bind(globalThis)
+    let proxy: OAuthProxy | undefined
+    try {
+      proxy = await startOAuthProxy({ getAccessToken, fetchImpl: originalFetch })
+      debug(`oauth proxy listening at ${proxy.url}`)
+    } catch (error) {
+      debug(`oauth proxy failed to start: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
     // Connection APIs are not re-entrant while plugin setup is activating.
     // Seed only from local opt-in sources, then resolve stored V2 state after
     // setup has returned to the host.
@@ -215,9 +230,21 @@ export default Plugin.define({
       draft.provider.update(INTEGRATION_ID, (provider) => {
         provider.body ??= {}
         if (typeof provider.body.apiKey !== "string" || !provider.body.apiKey) provider.body.apiKey = SENTINEL_KEY
+        if (proxy) {
+          provider.settings ??= {}
+          provider.settings.baseURL = proxy.url
+        }
       })
       for (const model of item.models.values()) {
-        draft.model.update(INTEGRATION_ID, model.id, (candidate) => { candidate.cost = [] })
+        draft.model.update(INTEGRATION_ID, model.id, (candidate) => {
+          candidate.cost = []
+          // Route this model through the loopback proxy. `model.settings.baseURL`
+          // is what the request runner reads to override the endpoint host.
+          if (proxy) {
+            candidate.settings ??= {}
+            candidate.settings.baseURL = proxy.url
+          }
+        })
       }
     }))
     debug("catalog transform registered")
@@ -265,6 +292,7 @@ export default Plugin.define({
       debug("cleanup started")
       events.abort()
       removeFetchPatch()
+      if (proxy) await proxy.close().catch(() => {})
       await Promise.allSettled(registrations.map((registration) => registration.dispose()))
       await Promise.race([Promise.allSettled([bootstrapTask, eventTask]), new Promise((resolve) => setTimeout(resolve, 1_000))])
     }
