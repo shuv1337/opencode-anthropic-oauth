@@ -71,6 +71,9 @@ export async function startOAuthProxy(input: {
     }
 
     const url = ANTHROPIC_ORIGIN + (req.url ?? "/")
+    if (process.env.OPENCODE_ANTHROPIC_OAUTH_DEBUG === "1") {
+      console.error(`[anthropic-oauth-proxy] ${req.method} ${req.url} -> ${url}`)
+    }
     const headers = new Headers()
     for (const [name, value] of Object.entries(req.headers)) {
       if (value === undefined) continue

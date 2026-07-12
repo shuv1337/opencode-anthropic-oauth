@@ -209,8 +209,14 @@ export default Plugin.define({
     // proxy that rewrites the request into a Claude Pro/Max subscription call.
     const originalFetch = globalThis.fetch.bind(globalThis)
     let proxy: OAuthProxy | undefined
+    // OpenCode's Anthropic route uses the versioned base `.../v1` and a bare
+    // `/messages` path, so the override base must also carry `/v1` for the
+    // request to reconstruct as `/v1/messages`. The proxy forwards the full
+    // incoming path to `https://api.anthropic.com`.
+    let proxyBaseURL: string | undefined
     try {
       proxy = await startOAuthProxy({ getAccessToken, fetchImpl: originalFetch })
+      proxyBaseURL = `${proxy.url}/v1`
       debug(`oauth proxy listening at ${proxy.url}`)
     } catch (error) {
       debug(`oauth proxy failed to start: ${error instanceof Error ? error.message : String(error)}`)
@@ -230,9 +236,9 @@ export default Plugin.define({
       draft.provider.update(INTEGRATION_ID, (provider) => {
         provider.body ??= {}
         if (typeof provider.body.apiKey !== "string" || !provider.body.apiKey) provider.body.apiKey = SENTINEL_KEY
-        if (proxy) {
+        if (proxyBaseURL) {
           provider.settings ??= {}
-          provider.settings.baseURL = proxy.url
+          provider.settings.baseURL = proxyBaseURL
         }
       })
       for (const model of item.models.values()) {
@@ -240,9 +246,9 @@ export default Plugin.define({
           candidate.cost = []
           // Route this model through the loopback proxy. `model.settings.baseURL`
           // is what the request runner reads to override the endpoint host.
-          if (proxy) {
+          if (proxyBaseURL) {
             candidate.settings ??= {}
-            candidate.settings.baseURL = proxy.url
+            candidate.settings.baseURL = proxyBaseURL
           }
         })
       }
