@@ -69,13 +69,15 @@ v3 also accepts a `claude setup-token` for headless hosts: export
 integration's API-key method — both are recognized as subscription credentials
 and routed through the OAuth path (as a plain `x-api-key` they would 401).
 
-**Status: this capability is being upstreamed.** shuvcode PR #349
-(`shuvbotta/anthropic-claude-code`) adds native Claude Pro/Max subscription
-support in-tree — OAuth method, setup-token env, and request shaping at route
-construction, with none of this plugin's workarounds (no loopback proxy, no
-global fetch patch, no sentinel key; those exist here only because external
-plugins have no hook into LLM route construction). On a host with that merged,
-this plugin is unnecessary; it remains useful for older hosts.
+**Status: upstreamed and merged.** shuvcode PR #349
+(`shuvbotta/anthropic-claude-code`, merged as `ea19eba379`) adds native Claude
+Pro/Max subscription support in-tree — OAuth method, setup-token env, and
+request shaping at route construction, with none of this plugin's workarounds
+(no loopback proxy, no global fetch patch, no sentinel key; those exist here
+only because external plugins have no hook into LLM route construction). On a
+shuvcode build containing that merge this plugin is unnecessary; it remains
+useful for older hosts and for upstream opencode until an equivalent lands
+there.
 
 ## Usage
 
