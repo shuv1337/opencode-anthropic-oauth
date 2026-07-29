@@ -44,6 +44,39 @@ Version `0.5.0` targets `opencode2 v0.0.0-next-15329`, `@opencode-ai/plugin@0.0.
 
 Fallback to Claude CLI or V1 `auth.json` is disabled by default so an isolated V2 installation cannot silently read shared credentials. Enable either option only when that sharing is intentional. A configured V2 or environment API key always disables OAuth interception.
 
+## OpenCode 2.0.0-alpha-3+ installation (v3, from source)
+
+alpha-3 removed the `/v2` plugin subpath this package's V2 entrypoint imports
+(`@opencode-ai/plugin` now exports only `.`, `./effect`, `./tui`, `./v1`,
+`./*`), and its promise plugin bridge exposes `integration` consumer-only — an
+OAuth method registered through it appears in the connect UI but its
+`authorize`/`refresh` never run, so connecting fails with an empty HTTP 500.
+
+The `./v3` entrypoint targets the Effect plugin surface instead (`{id, effect}`),
+which is the only external surface that can register integration methods on
+alpha-3. It depends only on `@ai-sdk/anthropic` and `effect` (no
+`@opencode-ai/plugin`). Not yet in an npm release — build from source
+(`npm run build && npm pack`), install the tarball into your opencode config
+directory, and load it via an adapter file:
+
+```ts
+// ~/.config/opencode/plugins/anthropic-oauth.ts
+export { default } from "opencode-anthropic-oauth/v3"
+```
+
+v3 also accepts a `claude setup-token` for headless hosts: export
+`CLAUDE_CODE_OAUTH_TOKEN`, or store the `sk-ant-oat...` value with the
+integration's API-key method — both are recognized as subscription credentials
+and routed through the OAuth path (as a plain `x-api-key` they would 401).
+
+**Status: this capability is being upstreamed.** shuvcode PR #349
+(`shuvbotta/anthropic-claude-code`) adds native Claude Pro/Max subscription
+support in-tree — OAuth method, setup-token env, and request shaping at route
+construction, with none of this plugin's workarounds (no loopback proxy, no
+global fetch patch, no sentinel key; those exist here only because external
+plugins have no hook into LLM route construction). On a host with that merged,
+this plugin is unnecessary; it remains useful for older hosts.
+
 ## Usage
 
 1. Run `/connect` in OpenCode (or `oc auth login` from CLI)
