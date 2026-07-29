@@ -16,6 +16,19 @@ export const INTEGRATION_ID = "anthropic"
 export const METHOD_ID = "claude-pro-max"
 export const SENTINEL_KEY = "opencode-anthropic-oauth"
 
+/** `claude setup-token` mints long-lived OAuth access tokens with this prefix.
+ *  A host has only one obvious place to paste one — the integration's `key`
+ *  method — and doing so is not a mistake to reject: the value IS an OAuth
+ *  token, and sending it as a plain `x-api-key` would simply 401. Recognising
+ *  the shape is also what makes a browserless host workable end to end, since
+ *  storing it creates the connection that puts the provider in the catalog at
+ *  all (an env var alone cannot: nothing catalogs an unconnected provider). */
+const SETUP_TOKEN_PREFIX = "sk-ant-oat"
+
+function isSetupToken(value: string | undefined): boolean {
+  return typeof value === "string" && value.trim().startsWith(SETUP_TOKEN_PREFIX)
+}
+
 export interface V2Options {
   allowClaudeCliFallback: boolean
   allowV1AuthFallback: boolean
@@ -67,7 +80,7 @@ export interface CredentialResolution {
    *  Note it is NOT read from a login shell in that setting — systemd units do
    *  not source `.bashrc` — so it belongs in the unit's EnvironmentFile. */
   setupTokenEnv: string | undefined
-  activeCredential: () => Promise<{ type?: string; access?: string } | undefined>
+  activeCredential: () => Promise<{ type?: string; access?: string; key?: string } | undefined>
   allowClaudeCliFallback: boolean
   allowV1AuthFallback: boolean
   hasCliCredentials: () => boolean
@@ -91,7 +104,7 @@ export async function isOauthModeActive(d: CredentialResolution): Promise<boolea
   if (d.apiKeyEnv?.trim()) return false
   try {
     const credential = await d.activeCredential()
-    if (credential?.type === "key") return false
+    if (credential?.type === "key") return isSetupToken(credential.key)
     if (credential?.type === "oauth") return true
   } catch {
     // Explicit fallback sources remain available if configured.
@@ -115,7 +128,7 @@ export async function resolveAccessToken(d: CredentialResolution): Promise<strin
   if (d.apiKeyEnv?.trim()) return null
   try {
     const credential = await d.activeCredential()
-    if (credential?.type === "key") return null
+    if (credential?.type === "key") return isSetupToken(credential.key) ? credential.key! : null
     if (credential?.type === "oauth") return credential.access ?? null
   } catch {
     // Continue only through explicitly enabled isolated fallbacks.

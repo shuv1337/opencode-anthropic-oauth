@@ -101,6 +101,11 @@ interface OAuthCredential {
 
 interface IntegrationDraft {
   readonly method: {
+    list(integrationID: string): readonly { readonly type: string }[]
+    update(input: {
+      readonly integrationID: string
+      readonly method: { readonly type: "key" } | { readonly type: "env"; readonly names: readonly string[] }
+    }): void
     update(input: {
       readonly integrationID: string
       readonly method: { readonly id: string; readonly type: "oauth"; readonly label?: string }
@@ -151,7 +156,7 @@ interface PluginContext {
       readonly active: (integrationID: string) => Effect.Effect<ConnectionInfo | undefined>
       readonly resolve: (
         connection: ConnectionInfo,
-      ) => Effect.Effect<{ type?: string; access?: string } | undefined, unknown>
+      ) => Effect.Effect<{ type?: string; access?: string; key?: string } | undefined, unknown>
     }
   }
   readonly catalog: {
@@ -207,6 +212,24 @@ export default {
 
     // --- OAuth method registration. THE reason this entrypoint exists.
     yield* ctx.integration.transform((draft) => {
+      // Registering a method on an integration the draft has not seeded yet
+      // makes the host mint a fresh entry whose `methods` array contains only
+      // what we add (core/src/integration.ts, draft.method.update). The
+      // built-in `key`/`env` methods then exist for display but not in the
+      // transformed state that `connection.key` consults — so connecting an
+      // API key to Anthropic would start dying with a bare 500 purely because
+      // this plugin is installed. Re-declare them so we extend the integration
+      // instead of shadowing it.
+      const existing = draft.method.list(INTEGRATION_ID)
+      if (!existing.some((method) => method.type === "key")) {
+        draft.method.update({ integrationID: INTEGRATION_ID, method: { type: "key" } })
+      }
+      if (!existing.some((method) => method.type === "env")) {
+        draft.method.update({
+          integrationID: INTEGRATION_ID,
+          method: { type: "env", names: ["ANTHROPIC_API_KEY"] },
+        })
+      }
       draft.method.update({
         integrationID: INTEGRATION_ID,
         method: { id: METHOD_ID, type: "oauth", label: "Claude Pro/Max" },

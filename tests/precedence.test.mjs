@@ -187,3 +187,21 @@ test("setup token still applies when a stored connection lookup throws", async (
   assert.equal(await isOauthModeActive(d), true)
   assert.equal(await resolveAccessToken(d), "sk-ant-oat01-example")
 })
+
+test("a setup token stored in the key slot is treated as OAuth, not an API key", async () => {
+  const d = deps({ activeCredential: async () => ({ type: "key", key: "sk-ant-oat01-stored" }) })
+  assert.equal(await isOauthModeActive(d), true)
+  assert.equal(await resolveAccessToken(d), "sk-ant-oat01-stored")
+})
+
+test("a genuine API key in the key slot still disables OAuth", async () => {
+  const d = deps({ activeCredential: async () => ({ type: "key", key: "sk-ant-api03-real" }) })
+  assert.equal(await isOauthModeActive(d), false)
+  assert.equal(await resolveAccessToken(d), null)
+})
+
+test("a key credential with no value disables OAuth rather than throwing", async () => {
+  const d = deps({ activeCredential: async () => ({ type: "key" }) })
+  assert.equal(await isOauthModeActive(d), false)
+  assert.equal(await resolveAccessToken(d), null)
+})
