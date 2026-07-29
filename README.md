@@ -74,8 +74,8 @@ and routed through the OAuth path (as a plain `x-api-key` they would 401).
 Pro/Max subscription support in-tree — OAuth method, setup-token env, and
 request shaping at route construction, with none of this plugin's workarounds
 (no loopback proxy, no global fetch patch, no sentinel key; those exist here
-only because external plugins have no hook into LLM route construction). On a
-shuvcode build containing that merge this plugin is unnecessary; it remains
+only because external plugins have no hook into LLM route construction). On
+shuvcode >= 2.0.0-alpha-4 (npm) this plugin is unnecessary; it remains
 useful for older hosts and for upstream opencode until an equivalent lands
 there.
 
