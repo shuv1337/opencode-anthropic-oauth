@@ -129,3 +129,61 @@ test("explicit API-key credential is never overridden by enabled fallbacks", asy
   assert.equal(await isOauthModeActive(d), false)
   assert.equal(await resolveAccessToken(d), null)
 })
+
+// --- CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) -------------------------
+// The browserless OAuth source. A headless daemon cannot create an interactive
+// attempt, so this is the only way such a host reaches a Pro/Max subscription.
+
+test("setup token enables OAuth and resolves as the access token", async () => {
+  const d = deps({ setupTokenEnv: "sk-ant-oat01-example" })
+  assert.equal(await isOauthModeActive(d), true)
+  assert.equal(await resolveAccessToken(d), "sk-ant-oat01-example")
+})
+
+test("an explicit API key still beats a setup token", async () => {
+  const d = deps({ apiKeyEnv: "sk-ant-api-xyz", setupTokenEnv: "sk-ant-oat01-example" })
+  assert.equal(await isOauthModeActive(d), false)
+  assert.equal(await resolveAccessToken(d), null)
+})
+
+test("a stored key credential still beats a setup token", async () => {
+  const d = deps({ activeCredential: async () => ({ type: "key" }), setupTokenEnv: "sk-ant-oat01-example" })
+  assert.equal(await isOauthModeActive(d), false)
+  assert.equal(await resolveAccessToken(d), null)
+})
+
+test("an interactively connected account outranks an ambient setup token", async () => {
+  const d = deps({
+    activeCredential: async () => ({ type: "oauth", access: "connected-token" }),
+    setupTokenEnv: "sk-ant-oat01-example",
+  })
+  assert.equal(await isOauthModeActive(d), true)
+  assert.equal(await resolveAccessToken(d), "connected-token")
+})
+
+test("setup token outranks the opt-in CLI fallback", async () => {
+  const d = deps({
+    setupTokenEnv: "sk-ant-oat01-example",
+    allowClaudeCliFallback: true,
+    hasCliCredentials: () => true,
+    getCliAccessToken: async () => "cli-token",
+  })
+  assert.equal(await resolveAccessToken(d), "sk-ant-oat01-example")
+})
+
+test("blank or whitespace setup token is ignored", async () => {
+  const d = deps({ setupTokenEnv: "   " })
+  assert.equal(await isOauthModeActive(d), false)
+  assert.equal(await resolveAccessToken(d), null)
+})
+
+test("setup token still applies when a stored connection lookup throws", async () => {
+  const d = deps({
+    setupTokenEnv: "sk-ant-oat01-example",
+    activeCredential: async () => {
+      throw new Error("host not ready")
+    },
+  })
+  assert.equal(await isOauthModeActive(d), true)
+  assert.equal(await resolveAccessToken(d), "sk-ant-oat01-example")
+})
